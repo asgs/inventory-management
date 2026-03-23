@@ -1,10 +1,10 @@
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="isOpen && costData" class="modal-overlay" @click="close">
-        <div class="modal-container" @click.stop>
+      <div v-if="isOpen && costData" class="modal-overlay" @click="close" @keydown.esc="close">
+        <div class="modal-container" @click.stop role="dialog" aria-modal="true" aria-labelledby="cost-modal-title" ref="modalRef">
           <div class="modal-header">
-            <h3 class="modal-title">{{ costData.month }} Cost Breakdown</h3>
+            <h3 class="modal-title" id="cost-modal-title">{{ costData.month }} Cost Breakdown</h3>
             <button class="close-button" @click="close">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                 <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -96,7 +96,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from '../composables/useI18n'
 
 const { currentCurrency } = useI18n()
@@ -104,6 +104,8 @@ const { currentCurrency } = useI18n()
 const currencySymbol = computed(() => {
   return currentCurrency.value === 'JPY' ? '¥' : '$'
 })
+
+const modalRef = ref(null)
 
 const props = defineProps({
   isOpen: {
@@ -117,6 +119,15 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close'])
+
+watch(() => props.isOpen, (open) => {
+  if (open) {
+    nextTick(() => {
+      const firstFocusable = modalRef.value?.querySelector('button, input, [tabindex]')
+      if (firstFocusable) firstFocusable.focus()
+    })
+  }
+})
 
 const totalCosts = computed(() => {
   if (!props.costData) return 0

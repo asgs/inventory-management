@@ -121,7 +121,7 @@ class TestDashboardEndpoints:
         """Test that pending orders are calculated correctly."""
         # Get all orders
         orders_response = client.get("/api/orders")
-        all_orders = orders_response.json()
+        all_orders = orders_response.json()["items"]
 
         # Count processing and backordered orders
         pending_count = sum(
@@ -139,7 +139,7 @@ class TestDashboardEndpoints:
         """Test that low stock items are calculated correctly."""
         # Get all inventory
         inventory_response = client.get("/api/inventory")
-        all_inventory = inventory_response.json()
+        all_inventory = inventory_response.json()["items"]
 
         # Count items at or below reorder point
         low_stock_count = sum(
@@ -157,7 +157,7 @@ class TestDashboardEndpoints:
         """Test that total inventory value is calculated correctly."""
         # Get all inventory
         inventory_response = client.get("/api/inventory")
-        all_inventory = inventory_response.json()
+        all_inventory = inventory_response.json()["items"]
 
         # Calculate total value
         expected_value = sum(

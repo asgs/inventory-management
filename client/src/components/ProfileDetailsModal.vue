@@ -1,10 +1,10 @@
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="isOpen" class="modal-overlay" @click="close">
-        <div class="modal-container" @click.stop>
+      <div v-if="isOpen" class="modal-overlay" @click="close" @keydown.esc="close">
+        <div class="modal-container" @click.stop role="dialog" aria-modal="true" aria-labelledby="profile-modal-title" ref="modalRef">
           <div class="modal-header">
-            <h3 class="modal-title">{{ t('profileDetails.title') }}</h3>
+            <h3 class="modal-title" id="profile-modal-title">{{ t('profileDetails.title') }}</h3>
             <button class="close-button" @click="close">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                 <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -66,11 +66,14 @@
 </template>
 
 <script setup>
+import { ref, watch, nextTick } from 'vue'
 import { useAuth } from '../composables/useAuth'
 import { useI18n } from '../composables/useI18n'
 
 const { currentUser, getInitials } = useAuth()
 const { t, currentLocale } = useI18n()
+
+const modalRef = ref(null)
 
 const props = defineProps({
   isOpen: {
@@ -80,6 +83,15 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close'])
+
+watch(() => props.isOpen, (open) => {
+  if (open) {
+    nextTick(() => {
+      const firstFocusable = modalRef.value?.querySelector('button, input, [tabindex]')
+      if (firstFocusable) firstFocusable.focus()
+    })
+  }
+})
 
 const close = () => {
   emit('close')

@@ -5,25 +5,25 @@
       <p>{{ t('orders.description') }}</p>
     </div>
 
-    <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-if="loading" class="loading" aria-live="polite" role="status">{{ t('common.loading') }}</div>
+    <div v-else-if="error" class="error" role="alert">{{ error }}</div>
     <div v-else>
       <div class="stats-grid">
         <div class="stat-card success">
           <div class="stat-label">{{ t('status.delivered') }}</div>
-          <div class="stat-value">{{ getOrdersByStatus('Delivered').length }}</div>
+          <div class="stat-value">{{ statusCounts.delivered }}</div>
         </div>
         <div class="stat-card info">
           <div class="stat-label">{{ t('status.shipped') }}</div>
-          <div class="stat-value">{{ getOrdersByStatus('Shipped').length }}</div>
+          <div class="stat-value">{{ statusCounts.shipped }}</div>
         </div>
         <div class="stat-card warning">
           <div class="stat-label">{{ t('status.processing') }}</div>
-          <div class="stat-value">{{ getOrdersByStatus('Processing').length }}</div>
+          <div class="stat-value">{{ statusCounts.processing }}</div>
         </div>
         <div class="stat-card danger">
           <div class="stat-label">{{ t('status.backordered') }}</div>
-          <div class="stat-value">{{ getOrdersByStatus('Backordered').length }}</div>
+          <div class="stat-value">{{ statusCounts.backordered }}</div>
         </div>
       </div>
 
@@ -32,7 +32,7 @@
           <h3 class="card-title">{{ t('orders.allOrders') }} ({{ orders.length }})</h3>
         </div>
         <div class="table-container">
-          <table class="orders-table">
+          <table class="orders-table" aria-label="Customer orders">
             <thead>
               <tr>
                 <th class="col-order-number">{{ t('orders.table.orderNumber') }}</th>
@@ -62,13 +62,50 @@
                   </details>
                 </td>
                 <td class="col-status">
-                  <span :class="['badge', getOrderStatusClass(order.status)]">
+                  <span :class="['badge', getOrderStatusClass(order.status)]" role="status">
                     {{ t(`status.${order.status.toLowerCase()}`) }}
                   </span>
                 </td>
                 <td class="col-date">{{ formatDate(order.order_date) }}</td>
                 <td class="col-date">{{ formatDate(order.expected_delivery) }}</td>
                 <td class="col-value"><strong>{{ currencySymbol }}{{ order.total_value.toLocaleString() }}</strong></td>
+              </tr>
+              <tr v-if="orders.length === 0">
+                <td colspan="7" style="text-align:center;padding:2rem;color:#64748b;">No data available</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Submitted Restocking Orders -->
+      <div class="card" style="margin-top: 24px;">
+        <div class="card-header">
+          <h3 class="card-title">{{ t('restocking.submittedOrders') }} ({{ restockingOrders.length }})</h3>
+        </div>
+        <div v-if="restockingOrders.length === 0" class="empty-state">
+          {{ t('restocking.noSubmittedOrders') }}
+        </div>
+        <div v-else class="table-container">
+          <table class="orders-table restocking-table" aria-label="Submitted restocking orders">
+            <thead>
+              <tr>
+                <th>{{ t('orders.table.orderNumber') }}</th>
+                <th>{{ t('orders.table.items') }}</th>
+                <th>{{ t('orders.table.status') }}</th>
+                <th>{{ t('orders.table.orderDate') }}</th>
+                <th>{{ t('orders.table.expectedDelivery') }}</th>
+                <th>{{ t('orders.table.totalValue') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="order in restockingOrders" :key="order.id">
+                <td><strong>{{ order.order_number }}</strong></td>
+                <td>{{ t('restocking.itemsCount', { count: order.items.length }) }}</td>
+                <td><span class="badge warning" role="status">{{ t('status.processing') }}</span></td>
+                <td>{{ formatDate(order.order_date) }}</td>
+                <td>{{ formatDate(order.expected_delivery) }}</td>
+                <td><strong>{{ currencySymbol }}{{ order.total_value.toLocaleString() }}</strong></td>
               </tr>
             </tbody>
           </table>
@@ -79,8 +116,8 @@
 </template>
 
 <script>
-import { ref, onMounted, watch, computed } from 'vue'
-import { api } from '../api'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { api, isAbortError } from '../api'
 import { useFilters } from '../composables/useFilters'
 import { useI18n } from '../composables/useI18n'
 
@@ -95,6 +132,7 @@ export default {
     const loading = ref(true)
     const error = ref(null)
     const orders = ref([])
+    const restockingOrders = ref([])
 
     // Use shared filters
     const {
@@ -105,11 +143,15 @@ export default {
       getCurrentFilters
     } = useFilters()
 
+    let abortController = null
+
     const loadOrders = async () => {
+      if (abortController) abortController.abort()
+      abortController = new AbortController()
       try {
         loading.value = true
         const filters = getCurrentFilters()
-        const fetchedOrders = await api.getOrders(filters)
+        const fetchedOrders = await api.getOrders(filters, abortController.signal)
 
         // Sort orders by order_date (earliest first)
         orders.value = fetchedOrders.sort((a, b) => {
@@ -118,20 +160,30 @@ export default {
           return dateA - dateB
         })
       } catch (err) {
+        if (isAbortError(err)) return
         error.value = 'Failed to load orders: ' + err.message
       } finally {
         loading.value = false
       }
     }
 
+    onUnmounted(() => {
+      if (abortController) abortController.abort()
+    })
+
     // Watch for filter changes and reload data
     watch([selectedPeriod, selectedLocation, selectedCategory, selectedStatus], () => {
       loadOrders()
     })
 
-    const getOrdersByStatus = (status) => {
-      return orders.value.filter(order => order.status === status)
-    }
+    const statusCounts = computed(() => {
+      const counts = { delivered: 0, shipped: 0, processing: 0, backordered: 0 }
+      orders.value.forEach(o => {
+        const key = o.status.toLowerCase()
+        if (key in counts) counts[key]++
+      })
+      return counts
+    })
 
     const getOrderStatusClass = (status) => {
       const statusMap = {
@@ -153,19 +205,32 @@ export default {
       })
     }
 
-    onMounted(loadOrders)
+    const loadRestockingOrders = async () => {
+      try {
+        const result = await api.getRestockingOrders()
+        restockingOrders.value = result
+      } catch (err) {
+        console.error('Failed to load restocking orders:', err)
+      }
+    }
+
+    onMounted(() => {
+      loadOrders()
+      loadRestockingOrders()
+    })
 
     return {
       t,
       loading,
       error,
       orders,
-      getOrdersByStatus,
+      statusCounts,
       getOrderStatusClass,
       formatDate,
       currencySymbol,
       translateProductName,
-      translateCustomerName
+      translateCustomerName,
+      restockingOrders
     }
   }
 }
@@ -275,5 +340,16 @@ export default {
 .item-meta {
   font-size: 0.813rem;
   color: #64748b;
+}
+
+.empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+.restocking-table {
+  table-layout: auto;
 }
 </style>

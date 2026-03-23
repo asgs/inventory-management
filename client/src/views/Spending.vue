@@ -5,8 +5,8 @@
       <p>{{ t('finance.description') }}</p>
     </div>
 
-    <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-if="loading" class="loading" aria-live="polite" role="status">{{ t('common.loading') }}</div>
+    <div v-else-if="error" class="error" role="alert">{{ error }}</div>
     <div v-else>
       <!-- Revenue & Financial KPIs -->
       <div class="stats-grid-finance">
@@ -133,7 +133,7 @@
             <h3 class="card-title">{{ t('finance.transactions.title') }}</h3>
           </div>
           <div class="transactions-table-container">
-            <table class="transactions-table">
+            <table class="transactions-table" aria-label="Recent transactions">
               <thead>
                 <tr>
                   <th>{{ t('finance.transactions.id') }}</th>
@@ -149,6 +149,9 @@
                   :key="transaction.id"
                   class="clickable-row"
                   @click="handleTransactionClick(transaction)"
+                  role="button"
+                  tabindex="0"
+                  @keydown.enter="handleTransactionClick(transaction)"
                 >
                   <td class="transaction-id">{{ transaction.id.toString().padStart(3, '0') }}</td>
                   <td class="transaction-description">{{ transaction.description }}</td>

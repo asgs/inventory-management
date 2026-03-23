@@ -5,8 +5,8 @@
       <p>{{ t('inventory.description') }}</p>
     </div>
 
-    <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-if="loading" class="loading" aria-live="polite" role="status">{{ t('common.loading') }}</div>
+    <div v-else-if="error" class="error" role="alert">{{ error }}</div>
     <div v-else>
       <div class="card">
         <div class="card-header">
@@ -26,6 +26,7 @@
               @click="searchQuery = ''"
               class="clear-search"
               :title="t('inventory.clearSearch')"
+              :aria-label="t('inventory.clearSearch')"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
@@ -34,7 +35,7 @@
           </div>
         </div>
         <div class="table-container">
-          <table>
+          <table aria-label="Inventory stock levels">
             <thead>
               <tr>
                 <th>{{ t('inventory.table.sku') }}</th>
@@ -54,6 +55,9 @@
                 :key="item.id"
                 class="clickable-row"
                 @click="showItemDetail(item)"
+                role="button"
+                tabindex="0"
+                @keydown.enter="showItemDetail(item)"
               >
                 <td><strong>{{ item.sku }}</strong></td>
                 <td>{{ translateProductName(item.name) }}</td>
@@ -64,10 +68,13 @@
                 <td><strong>{{ currencySymbol }}{{ (item.quantity_on_hand * item.unit_cost).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}</strong></td>
                 <td>{{ translateWarehouse(item.location) }}</td>
                 <td>
-                  <span :class="['badge', getStockStatusClass(item)]">
+                  <span :class="['badge', getStockStatusClass(item)]" role="status">
                     {{ getStockStatus(item) }}
                   </span>
                 </td>
+              </tr>
+              <tr v-if="filteredItems.length === 0">
+                <td colspan="9" style="text-align:center;padding:2rem;color:#64748b;">No data available</td>
               </tr>
             </tbody>
           </table>
@@ -84,8 +91,8 @@
 </template>
 
 <script>
-import { ref, onMounted, watch, computed } from 'vue'
-import { api } from '../api'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { api, isAbortError } from '../api'
 import { useFilters } from '../composables/useFilters'
 import { useI18n } from '../composables/useI18n'
 import InventoryDetailModal from '../components/InventoryDetailModal.vue'
@@ -106,6 +113,17 @@ export default {
     const error = ref(null)
     const items = ref([])
     const searchQuery = ref('')
+
+    // Debounced search to avoid filtering on every keystroke
+    const debouncedSearch = ref('')
+    let searchTimeout = null
+    watch(searchQuery, (val) => {
+      clearTimeout(searchTimeout)
+      searchTimeout = setTimeout(() => { debouncedSearch.value = val }, 300)
+    })
+
+    // AbortController for cancelling pending requests
+    let abortController = null
 
     // Modal state
     const showItemModal = ref(false)
@@ -133,8 +151,8 @@ export default {
       let filtered = items.value
 
       // Apply search filter if query exists
-      if (searchQuery.value.trim()) {
-        const query = searchQuery.value.toLowerCase().trim()
+      if (debouncedSearch.value.trim()) {
+        const query = debouncedSearch.value.toLowerCase().trim()
         filtered = filtered.filter(item =>
           item.name.toLowerCase().includes(query)
         )
@@ -150,20 +168,27 @@ export default {
     })
 
     const loadInventory = async () => {
+      if (abortController) abortController.abort()
+      abortController = new AbortController()
       try {
         loading.value = true
         const filters = getCurrentFilters()
-        // Inventory doesn't support month/status filters, only warehouse and category
         items.value = await api.getInventory({
           warehouse: filters.warehouse,
           category: filters.category
-        })
+        }, abortController.signal)
       } catch (err) {
+        if (isAbortError(err)) return
         error.value = 'Failed to load inventory: ' + err.message
       } finally {
         loading.value = false
       }
     }
+
+    onUnmounted(() => {
+      if (abortController) abortController.abort()
+      clearTimeout(searchTimeout)
+    })
 
     // Watch for filter changes and reload data
     watch([selectedLocation, selectedCategory], () => {
