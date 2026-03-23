@@ -13,11 +13,13 @@ class TestInventoryEndpoints:
         assert response.status_code == 200
 
         data = response.json()
-        assert isinstance(data, list)
-        assert len(data) > 0
+        assert "items" in data
+        items = data["items"]
+        assert isinstance(items, list)
+        assert len(items) > 0
 
         # Verify structure of first item
-        first_item = data[0]
+        first_item = items[0]
         assert "id" in first_item
         assert "sku" in first_item
         assert "name" in first_item
@@ -32,7 +34,7 @@ class TestInventoryEndpoints:
         response = client.get("/api/inventory?warehouse=San Francisco")
         assert response.status_code == 200
 
-        data = response.json()
+        data = response.json()["items"]
         assert isinstance(data, list)
 
         # All items should be from San Francisco
@@ -44,7 +46,7 @@ class TestInventoryEndpoints:
         response = client.get("/api/inventory?category=Circuit Boards")
         assert response.status_code == 200
 
-        data = response.json()
+        data = response.json()["items"]
         assert isinstance(data, list)
 
         # All items should be Circuit Boards
@@ -56,7 +58,7 @@ class TestInventoryEndpoints:
         response = client.get("/api/inventory?warehouse=London&category=Sensors")
         assert response.status_code == 200
 
-        data = response.json()
+        data = response.json()["items"]
         assert isinstance(data, list)
 
         # All items should match both filters
@@ -73,13 +75,13 @@ class TestInventoryEndpoints:
         assert response_no_filter.status_code == 200
 
         # Should return same number of items
-        assert len(response_all.json()) == len(response_no_filter.json())
+        assert len(response_all.json()["items"]) == len(response_no_filter.json()["items"])
 
     def test_get_inventory_item_by_id(self, client):
         """Test getting a specific inventory item by ID."""
         # First get all items to find a valid ID
         response = client.get("/api/inventory")
-        all_items = response.json()
+        all_items = response.json()["items"]
         assert len(all_items) > 0
 
         first_item_id = all_items[0]["id"]
@@ -103,7 +105,7 @@ class TestInventoryEndpoints:
     def test_inventory_item_fields(self, client):
         """Test that inventory items have all required fields."""
         response = client.get("/api/inventory")
-        data = response.json()
+        data = response.json()["items"]
 
         required_fields = [
             "id", "sku", "name", "category", "warehouse",
@@ -118,7 +120,7 @@ class TestInventoryEndpoints:
     def test_inventory_quantity_types(self, client):
         """Test that quantity fields are proper numeric types."""
         response = client.get("/api/inventory")
-        data = response.json()
+        data = response.json()["items"]
 
         for item in data:
             assert isinstance(item["quantity_on_hand"], int)
@@ -133,7 +135,7 @@ class TestInventoryEndpoints:
         response = client.get("/api/inventory?category=Power Supplies")
         assert response.status_code == 200
 
-        data = response.json()
+        data = response.json()["items"]
         assert isinstance(data, list)
 
         # Should have at least one Power Supplies item

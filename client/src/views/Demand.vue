@@ -5,8 +5,8 @@
       <p>{{ t('demand.description') }}</p>
     </div>
 
-    <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-if="loading" class="loading" aria-live="polite" role="status">{{ t('common.loading') }}</div>
+    <div v-else-if="error" class="error" role="alert">{{ error }}</div>
     <div v-else>
       <div class="demand-trend-cards">
         <div class="trend-card increasing-card">
@@ -72,7 +72,7 @@
           <h3 class="card-title">{{ t('demand.demandForecasts') }}</h3>
         </div>
         <div class="table-container">
-          <table>
+          <table aria-label="Demand forecasts">
             <thead>
               <tr>
                 <th>{{ t('demand.table.sku') }}</th>
@@ -96,7 +96,7 @@
                   </span>
                 </td>
                 <td>
-                  <span :class="['badge', forecast.trend]">
+                  <span :class="['badge', forecast.trend]" role="status">
                     {{ t(`trends.${forecast.trend}`) }}
                   </span>
                 </td>

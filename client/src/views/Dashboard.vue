@@ -4,8 +4,8 @@
       <h2>{{ t('dashboard.title') }}</h2>
     </div>
 
-    <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-if="loading" class="loading" aria-live="polite" role="status">{{ t('common.loading') }}</div>
+    <div v-else-if="error" class="error" role="alert">{{ error }}</div>
     <div v-else>
       <!-- Key Performance Indicators -->
       <div class="kpi-section">
@@ -84,7 +84,7 @@
             <div class="order-health-container">
               <!-- Left: Donut Chart -->
               <div class="order-health-chart">
-                <svg viewBox="0 0 200 200" class="donut-svg-compact">
+                <svg viewBox="0 0 200 200" class="donut-svg-compact" role="img" aria-label="Order status distribution chart">
                   <circle cx="100" cy="100" r="65" fill="none" stroke="#e2e8f0" stroke-width="25"/>
                   <circle cx="100" cy="100" r="65" fill="none" stroke="#10b981" stroke-width="25"
                     :stroke-dasharray="`${getCircleSegment(statusData.delivered)} 408`"
@@ -169,7 +169,7 @@
             <p class="no-backlog-text">{{ t('dashboard.inventoryShortages.noShortages') }}</p>
           </div>
           <div v-else class="table-container">
-            <table>
+            <table aria-label="Inventory shortage backlog">
               <thead>
                 <tr>
                   <th>{{ t('dashboard.inventoryShortages.orderId') }}</th>
@@ -194,7 +194,7 @@
                   <td @click="showBacklogDetail(item)" style="cursor: pointer;">{{ item.quantity_needed }}</td>
                   <td @click="showBacklogDetail(item)" style="cursor: pointer;">{{ item.quantity_available }}</td>
                   <td @click="showBacklogDetail(item)" style="cursor: pointer;">
-                    <span class="badge danger">
+                    <span class="badge danger" role="status">
                       {{ Math.abs(item.quantity_needed - item.quantity_available) }} {{ t('dashboard.inventoryShortages.unitsShort') }}
                     </span>
                   </td>
@@ -204,7 +204,7 @@
                     </span>
                   </td>
                   <td @click="showBacklogDetail(item)" style="cursor: pointer;">
-                    <span :class="['badge', item.priority]">
+                    <span :class="['badge', item.priority]" role="status">
                       {{ translatePriority(item.priority) }}
                     </span>
                   </td>
@@ -236,7 +236,7 @@
             <h3 class="card-title">{{ t('dashboard.topProducts.title') }}</h3>
           </div>
           <div class="table-container">
-            <table>
+            <table aria-label="Top products by revenue">
               <thead>
                 <tr>
                   <th>{{ t('dashboard.topProducts.product') }}</th>
@@ -254,6 +254,9 @@
                   :key="item.sku"
                   class="clickable-row"
                   @click="showProductDetail(item)"
+                  role="button"
+                  tabindex="0"
+                  @keydown.enter="showProductDetail(item)"
                 >
                   <td><strong>{{ translateProductName(item.name) }}</strong></td>
                   <td>{{ item.sku }}</td>
@@ -262,7 +265,7 @@
                   <td><strong>{{ formatCurrency(item.revenue, selectedCurrency) }}</strong></td>
                   <td>{{ formatDate(item.firstOrderDate) }}</td>
                   <td>
-                    <span :class="['badge', getStockBadge(item.stockLevel)]">
+                    <span :class="['badge', getStockBadge(item.stockLevel)]" role="status">
                       {{ translateStockLevel(item.stockLevel) }}
                     </span>
                   </td>
@@ -304,12 +307,14 @@ import { useI18n } from '../composables/useI18n'
 import { formatCurrency } from '../utils/currency'
 import ProductDetailModal from '../components/ProductDetailModal.vue'
 import BacklogDetailModal from '../components/BacklogDetailModal.vue'
+import PurchaseOrderModal from '../components/PurchaseOrderModal.vue'
 
 export default {
   name: 'Dashboard',
   components: {
     ProductDetailModal,
     BacklogDetailModal,
+    PurchaseOrderModal,
   },
   setup() {
     const { t, currentCurrency, translateProductName, translateWarehouse } = useI18n()
@@ -486,25 +491,23 @@ export default {
       return Math.max(10, Math.ceil(max / 10) * 10)
     })
 
-    const topProducts = computed(() => {
-      // Calculate top products from filtered order data
-      const productMap = {}
+    // Pre-build inventory index for O(1) SKU lookups (instead of O(n) find per item)
+    const inventoryIndex = computed(() => {
+      return new Map(inventoryItems.value.map(i => [i.sku, i]))
+    })
 
-      // allOrders is already filtered by API based on: month, warehouse, category, status
+    const topProducts = computed(() => {
+      const productMap = {}
+      const invIndex = inventoryIndex.value
+      const hasFilters = selectedLocation.value !== 'all' || selectedCategory.value !== 'all'
+
       allOrders.value.forEach(order => {
         if (order.items) {
           order.items.forEach(item => {
             const sku = item.sku
+            const invItem = invIndex.get(sku)
 
-            // Find matching inventory item to get full product details
-            // Note: inventoryItems is also filtered by API based on: warehouse, category
-            const invItem = inventoryItems.value.find(i => i.sku === sku)
-
-            // Skip products that don't match current inventory filters
-            // (e.g., if filtering by warehouse A, don't show products from warehouse B)
-            if (!invItem && (selectedLocation.value !== 'all' || selectedCategory.value !== 'all')) {
-              return // Skip this product as it doesn't match inventory filters
-            }
+            if (!invItem && hasFilters) return
 
             if (!productMap[sku]) {
               productMap[sku] = {
@@ -517,11 +520,8 @@ export default {
                 stockLevel: invItem ? (invItem.quantity_on_hand > invItem.reorder_point ? 'In Stock' : 'Low Stock') : 'Unknown',
                 firstOrderDate: order.order_date
               }
-            } else {
-              // Update to EARLIEST order date (to show January at top when selecting All Months)
-              if (order.order_date && (!productMap[sku].firstOrderDate || order.order_date < productMap[sku].firstOrderDate)) {
-                productMap[sku].firstOrderDate = order.order_date
-              }
+            } else if (order.order_date && (!productMap[sku].firstOrderDate || order.order_date < productMap[sku].firstOrderDate)) {
+              productMap[sku].firstOrderDate = order.order_date
             }
             productMap[sku].unitsOrdered += item.quantity
             productMap[sku].revenue += item.quantity * item.unit_price

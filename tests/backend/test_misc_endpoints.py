@@ -209,7 +209,7 @@ class TestSpendingEndpoints:
         response = client.get("/api/spending/transactions")
         assert response.status_code == 200
 
-        data = response.json()
+        data = response.json()["items"]
         assert isinstance(data, list)
 
         # Check structure if data exists

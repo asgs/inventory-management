@@ -1,10 +1,10 @@
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="isOpen" class="modal-overlay" @click="close">
-        <div class="modal-container tasks-modal-container" @click.stop>
+      <div v-if="isOpen" class="modal-overlay" @click="close" @keydown.esc="close">
+        <div class="modal-container tasks-modal-container" @click.stop role="dialog" aria-modal="true" aria-labelledby="tasks-modal-title" ref="modalRef">
           <div class="modal-header">
-            <h3 class="modal-title">{{ t('tasks.title') }}</h3>
+            <h3 class="modal-title" id="tasks-modal-title">{{ t('tasks.title') }}</h3>
             <button class="close-button" @click="close">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                 <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -119,7 +119,7 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from '../composables/useI18n'
 
 export default {
@@ -137,6 +137,7 @@ export default {
   emits: ['close', 'add-task', 'delete-task', 'toggle-task'],
   setup(props, { emit }) {
     const { t, currentLocale } = useI18n()
+    const modalRef = ref(null)
     const newTask = ref({
       title: '',
       priority: 'medium',
@@ -146,6 +147,16 @@ export default {
     const sortedTasks = computed(() => {
       // Don't sort - just return tasks in their current order (newest first)
       return [...props.tasks]
+    })
+
+    // Focus first focusable element when modal opens
+    watch(() => props.isOpen, (open) => {
+      if (open) {
+        nextTick(() => {
+          const firstFocusable = modalRef.value?.querySelector('button, input, [tabindex]')
+          if (firstFocusable) firstFocusable.focus()
+        })
+      }
     })
 
     const close = () => {
@@ -231,6 +242,7 @@ export default {
 
     return {
       t,
+      modalRef,
       newTask,
       sortedTasks,
       close,
